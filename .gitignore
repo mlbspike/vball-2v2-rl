@@ -7,6 +7,14 @@
 [Mm]emoryCaptures/
 UserSettings/
 
+
+# IDE auto-generated
+*.csproj
+*.sln
+*.user
+*.userprefs
+.vs/
+
 # Unity cache
 *.unitypackage
 
