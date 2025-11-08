@@ -1,3 +1,6 @@
+env_settings:
+  num_envs: 1
+    
 behaviors:
   VBall2v2:
     trainer_type: ppo

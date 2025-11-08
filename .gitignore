@@ -1,3 +1,7 @@
+########################
+# Unity project
+########################
+
 [Ll]ibrary/
 [Tt]emp/
 [Oo]bj/
@@ -7,26 +11,52 @@
 [Mm]emoryCaptures/
 UserSettings/
 
+# Asset store tools
+Assets/AssetStoreTools*
 
-# IDE auto-generated
-*.csproj
-*.sln
-*.user
-*.userprefs
-.vs/
-
-# Unity cache
+# Unity packages
 *.unitypackage
 
-# OS
-.DS_Store
-Thumbs.db
+########################
+# IDE / Editor
+########################
 
-# Rider / VS / etc
+# Visual Studio / VSCode / Rider / etc
 .vs/
 .vscode/
 .idea/
 
-# Python venvs (if any)
-.venv/
+# VS / MSBuild user files
+*.csproj
+*.sln
+*.user
+*.userprefs
+*.suo
+*.pidb
+*.opendb
+
+########################
+# Python / virtual envs
+########################
+
+# Common venv names
 venv/
+venv_*/
+.venv/
+.env/
+
+# Python cache
+__pycache__/
+*.pyc
+
+########################
+# OS cruft
+########################
+
+.DS_Store
+Thumbs.db
+
+
+run_logs/
+results/
+Assets/ML-Agents/Timers/
