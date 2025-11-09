@@ -21,13 +21,9 @@ public class VolleyballAgent : Agent
     public float hitUpwardFactor = 4f;
     public float maxHitForce = 9f;
 
-    // internal
-    Vector3 _spawnPos;
-
     public override void Initialize()
     {
         if (!rb) rb = GetComponent<Rigidbody>();
-        _spawnPos = transform.position;
     }
 
     public override void OnEpisodeBegin()
@@ -35,7 +31,6 @@ public class VolleyballAgent : Agent
         // Reset handled by GameManager; just ensure rigidbody is calm.
         rb.velocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
-        transform.position = _spawnPos;
     }
 
     public override void CollectObservations(VectorSensor sensor)

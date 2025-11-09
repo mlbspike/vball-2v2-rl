@@ -14,15 +14,22 @@ public class VolleyballBootstrap : MonoBehaviour
     public float courtWidth = 8f;
     public float netHeight = 2.43f;
     public float netWidth = 0.1f;
+    public float runoff = 3f;
+    public float groundY = 0f;
 
     [Header("Agent Settings")]
-    public float agentHeight = 2f;
+    public float agentHeight = 1.9f;
     public float agentRadius = 0.5f;
     public float agentMass = 1f;
 
     [Header("Ball Settings")]
     public float ballRadius = 0.2f;
     public float ballMass = 0.27f;
+
+    [Header("Serve Settings")]
+    public float serveHeight = 2f;
+    public float serveForwardImpulse = 4f;
+    public float serveDownwardImpulse = 2.3f; // should remain positive
 
     void Start()
     {
@@ -82,30 +89,44 @@ public class VolleyballBootstrap : MonoBehaviour
 
     GameObject CreateCourt()
     {
-        GameObject court = GameObject.CreatePrimitive(PrimitiveType.Plane);
-        court.name = "Court";
-        court.transform.position = Vector3.zero;
-        court.transform.localScale = new Vector3(courtLength / 10f, 1f, courtWidth / 10f);
-        
-        // Set material to a light color
-        Renderer renderer = court.GetComponent<Renderer>();
-        Material courtMat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-        courtMat.color = new Color(0.8f, 0.9f, 0.7f); // Light green
-        renderer.material = courtMat;
-        
-        // Add collider if not present
-        if (court.GetComponent<Collider>() == null)
-        {
-            court.AddComponent<BoxCollider>();
-        }
-        
-        return court;
+        GameObject courtRoot = new GameObject("Court");
+        courtRoot.transform.position = new Vector3(0f, groundY, 0f);
+
+        float runoffLength = courtLength + runoff * 2f;
+        float runoffWidth = courtWidth + runoff * 2f;
+
+        GameObject runoffPlane = GameObject.CreatePrimitive(PrimitiveType.Plane);
+        runoffPlane.name = "Court_Runoff";
+        runoffPlane.transform.SetParent(courtRoot.transform, false);
+        runoffPlane.transform.localPosition = Vector3.zero;
+        runoffPlane.transform.localScale = new Vector3(runoffLength / 10f, 1f, runoffWidth / 10f);
+
+        Renderer runoffRenderer = runoffPlane.GetComponent<Renderer>();
+        Material runoffMat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+        runoffMat.color = new Color(0.4f, 0.45f, 0.5f);
+        runoffRenderer.material = runoffMat;
+
+        GameObject playablePlane = GameObject.CreatePrimitive(PrimitiveType.Plane);
+        playablePlane.name = "Court_Playable";
+        playablePlane.transform.SetParent(courtRoot.transform, false);
+        playablePlane.transform.localPosition = new Vector3(0f, 0.01f, 0f);
+        playablePlane.transform.localScale = new Vector3(courtLength / 10f, 1f, courtWidth / 10f);
+
+        Renderer playableRenderer = playablePlane.GetComponent<Renderer>();
+        Material playableMat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+        playableMat.color = new Color(0.85f, 0.7f, 0.45f);
+        playableRenderer.material = playableMat;
+
+        Collider playableCollider = playablePlane.GetComponent<Collider>();
+        if (playableCollider) playableCollider.enabled = false;
+
+        return courtRoot;
     }
 
     GameObject CreateNet()
     {
         GameObject net = new GameObject("Net");
-        net.transform.position = new Vector3(0f, netHeight / 2f, 0f);
+        net.transform.position = new Vector3(0f, groundY + netHeight / 2f, 0f);
         
         // Create net visual (plane)
         GameObject netVisual = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -140,7 +161,7 @@ public class VolleyballBootstrap : MonoBehaviour
     {
         GameObject ball = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         ball.name = "Ball";
-        ball.transform.position = new Vector3(0f, 2f, 0f);
+        ball.transform.position = new Vector3(0f, groundY + 2f, 0f);
         ball.transform.localScale = Vector3.one * ballRadius * 2f;
         
         // Set ball material
@@ -171,18 +192,23 @@ public class VolleyballBootstrap : MonoBehaviour
     {
         VolleyballAgent[] agents = new VolleyballAgent[4];
         
-        // Team 0 positions (near side, negative Z)
-        Vector3[] team0Positions = new Vector3[]
+        float spawnY = groundY + agentHeight * 0.5f;
+        float team0X = -0.35f * courtLength;
+        float team1X = 0.35f * courtLength;
+        float zOffset = 0.25f * courtWidth;
+        
+        // Team 0 positions (negative X side)
+        Vector3[] team0Positions =
         {
-            new Vector3(-2f, agentHeight / 2f, -3f), // Player A
-            new Vector3(2f, agentHeight / 2f, -3f)   // Player B
+            new Vector3(team0X, spawnY, -zOffset), // Player A
+            new Vector3(team0X, spawnY,  zOffset)  // Player B
         };
         
-        // Team 1 positions (far side, positive Z)
-        Vector3[] team1Positions = new Vector3[]
+        // Team 1 positions (positive X side)
+        Vector3[] team1Positions =
         {
-            new Vector3(-2f, agentHeight / 2f, 3f),  // Player A
-            new Vector3(2f, agentHeight / 2f, 3f)     // Player B
+            new Vector3(team1X, spawnY, -zOffset), // Player A
+            new Vector3(team1X, spawnY,  zOffset)  // Player B
         };
         
         // Create Team 0 agents
@@ -264,9 +290,14 @@ public class VolleyballBootstrap : MonoBehaviour
         gameManager.team1PlayerA = agents[2];
         gameManager.team1PlayerB = agents[3];
         
-        // Set court dimensions
-        gameManager.courtHalfLength = courtLength / 2f;
-        gameManager.courtHalfWidth = courtWidth / 2f;
+        gameManager.courtLength = courtLength;
+        gameManager.courtWidth = courtWidth;
+        gameManager.runoff = runoff;
+        gameManager.groundY = groundY;
+        gameManager.playerHeight = agentHeight;
+        gameManager.serveHeight = serveHeight;
+        gameManager.serveForwardImpulse = serveForwardImpulse;
+        gameManager.serveDownwardImpulse = serveDownwardImpulse;
         
         // Assign game manager to all agents
         foreach (var agent in agents)

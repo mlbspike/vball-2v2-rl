@@ -11,8 +11,15 @@ public class VolleyballGameManager : MonoBehaviour
     public Transform ball;
     public Rigidbody ballRb;
     public Transform netCenter;
-    public float courtHalfLength = 8f;
-    public float courtHalfWidth = 4f;
+
+    [Header("Court")]
+    public float courtLength = 16f;
+    public float courtWidth = 8f;
+    public float runoff = 3f;
+    public float groundY = 0f;
+
+    [Header("Players")]
+    public float playerHeight = 1.9f;
 
     [Header("Agents")]
     public VolleyballAgent team0PlayerA;
@@ -20,9 +27,12 @@ public class VolleyballGameManager : MonoBehaviour
     public VolleyballAgent team1PlayerA;
     public VolleyballAgent team1PlayerB;
 
-    [Header("Gameplay")]
+    [Header("Serve")]
     public float serveHeight = 2f;
-    public float serveForce = 5f;
+    public float serveForwardImpulse = 4f;
+    public float serveDownwardImpulse = 2.3f;
+
+    [Header("Gameplay")]
     public float rallyResetDelay = 1.5f;
     public int maxRalliesPerEpisode = 50;
 
@@ -36,6 +46,7 @@ public class VolleyballGameManager : MonoBehaviour
 
     int _ralliesThisEpisode;
     bool _rallyLive;
+    float _ballRadius = 0.2f;
 
   //  Leave Awake empty (or remove it)
     void Awake()
@@ -46,7 +57,7 @@ public class VolleyballGameManager : MonoBehaviour
     //  Do initialization here, after Bootstrap has assigned all fields
     void Start()
     {
-        if (!ballRb) ballRb = ball.GetComponent<Rigidbody>();
+        if (!ballRb && ball) ballRb = ball.GetComponent<Rigidbody>();
 
         _team0Group = new SimpleMultiAgentGroup();
         _team1Group = new SimpleMultiAgentGroup();
@@ -60,7 +71,30 @@ public class VolleyballGameManager : MonoBehaviour
         team0PlayerB.gameManager = this;
         team1PlayerA.gameManager = this;
         team1PlayerB.gameManager = this;
+
+        ApplyUniformPlayerHeight();
+        if (ball) _ballRadius = ball.lossyScale.y * 0.5f;
         ResetEpisode();
+    }
+
+    void ApplyUniformPlayerHeight()
+    {
+        SetAgentHeight(team0PlayerA);
+        SetAgentHeight(team0PlayerB);
+        SetAgentHeight(team1PlayerA);
+        SetAgentHeight(team1PlayerB);
+    }
+
+    void SetAgentHeight(VolleyballAgent agent)
+    {
+        if (!agent || playerHeight <= 0f) return;
+
+        var capsule = agent.GetComponent<CapsuleCollider>();
+        float currentHeight = capsule ? capsule.bounds.size.y : agent.transform.localScale.y * 2f;
+        if (currentHeight <= 0f || Mathf.Approximately(currentHeight, playerHeight)) return;
+
+        float scaleFactor = playerHeight / currentHeight;
+        agent.transform.localScale = agent.transform.localScale * scaleFactor;
     }
 
     public VolleyballAgent GetTeammate(VolleyballAgent agent)
@@ -86,39 +120,72 @@ public class VolleyballGameManager : MonoBehaviour
         lastTouchTeamId = -1;
 
         ResetAgentsPositions();
-        StartRally(serveToTeamId: Random.value < 0.5f ? 0 : 1);
+        ResetRally(Random.value < 0.5f ? 0 : 1);
     }
 
     void ResetAgentsPositions()
     {
-        // very simple spawn layout; tweak later
-        team0PlayerA.transform.position = new Vector3(-2f, 1f, -1.5f);
-        team0PlayerB.transform.position = new Vector3( 2f, 1f, -1.5f);
-        team1PlayerA.transform.position = new Vector3(-2f, 1f,  1.5f);
-        team1PlayerB.transform.position = new Vector3( 2f, 1f,  1.5f);
+        float spawnY = groundY + playerHeight * 0.5f;
+        float team0X = -0.35f * courtLength;
+        float team1X = 0.35f * courtLength;
+        float zOffset = 0.25f * courtWidth;
 
-        foreach (var a in new[] { team0PlayerA, team0PlayerB, team1PlayerA, team1PlayerB })
+        Vector3[] positions =
         {
-            a.rb.velocity = Vector3.zero;
-            a.rb.angularVelocity = Vector3.zero;
+            new Vector3(team0X, spawnY, -zOffset),
+            new Vector3(team0X, spawnY,  zOffset),
+            new Vector3(team1X, spawnY, -zOffset),
+            new Vector3(team1X, spawnY,  zOffset)
+        };
+
+        VolleyballAgent[] agents = { team0PlayerA, team0PlayerB, team1PlayerA, team1PlayerB };
+        for (int i = 0; i < agents.Length; i++)
+        {
+            var agent = agents[i];
+            if (!agent) continue;
+
+            agent.transform.position = positions[i];
+            if (agent.rb)
+            {
+                agent.rb.velocity = Vector3.zero;
+                agent.rb.angularVelocity = Vector3.zero;
+                agent.rb.position = positions[i];
+            }
         }
     }
 
-    void StartRally(int serveToTeamId)
+    void ResetRally()
+    {
+        ResetRally(Random.value < 0.5f ? 0 : 1);
+    }
+
+    void ResetRally(int serveToTeamId)
     {
         _rallyLive = false;
         touchesTeam0 = 0;
         touchesTeam1 = 0;
         lastTouchTeamId = -1;
 
+        if (!ballRb) return;
+
         ballRb.velocity = Vector3.zero;
         ballRb.angularVelocity = Vector3.zero;
 
-        // Simple center serve from opposite side
-        float z = serveToTeamId == 0 ? 1.0f : -1.0f;
-        ball.position = new Vector3(0f, serveHeight, z);
-        var dir = new Vector3(0f, 0.2f, serveToTeamId == 0 ? -1f : 1f).normalized;
-        ballRb.AddForce(dir * serveForce, ForceMode.VelocityChange);
+        Vector3 team0ServePos = new Vector3(-courtLength * 0.5f, groundY, -courtWidth * 0.35f);
+        Vector3 team1ServePos = new Vector3(courtLength * 0.5f, groundY, courtWidth * 0.35f);
+        Vector3 servePos = serveToTeamId == 0 ? team0ServePos : team1ServePos;
+        Vector3 startPos = servePos + Vector3.up * serveHeight;
+
+        ballRb.position = startPos;
+        if (ball) ball.position = startPos;
+
+        Vector3 targetPos = serveToTeamId == 0
+            ? new Vector3(courtLength * 0.25f, groundY, 0f)
+            : new Vector3(-courtLength * 0.25f, groundY, 0f);
+
+        Vector3 serveDir = (targetPos - startPos).normalized;
+        Vector3 impulse = serveDir * serveForwardImpulse + Vector3.up * serveDownwardImpulse;
+        ballRb.AddForce(impulse, ForceMode.Impulse);
 
         _rallyLive = true;
     }
@@ -147,71 +214,103 @@ public class VolleyballGameManager : MonoBehaviour
         if ((touchesTeam0 > 3 && team == 0) ||
             (touchesTeam1 > 3 && team == 1))
         {
-            EndRally(losingTeamId: team);
+            int winningTeam = team == 0 ? 1 : 0;
+            ResolveRally(winningTeam, team);
         }
     }
 
     void FixedUpdate()
     {
-        if (!_rallyLive) return;
+        if (!_rallyLive || !ballRb) return;
 
-        // Check ball out-of-bounds / floor contact
-        if (ball.position.y < 0.5f)
+        EvaluateBallState(ballRb.position);
+    }
+
+    public void EvaluateBallState(Vector3 pos)
+    {
+        if (!_rallyLive || !ballRb) return;
+
+        bool inPlayableCourt =
+            Mathf.Abs(pos.x) <= courtLength * 0.5f &&
+            Mathf.Abs(pos.z) <= courtWidth * 0.5f;
+
+        bool hardOutOfBounds =
+            Mathf.Abs(pos.x) > (courtLength * 0.5f + runoff) ||
+            Mathf.Abs(pos.z) > (courtWidth * 0.5f + runoff) ||
+            pos.y < -1f;
+
+        float groundContactThreshold = groundY + _ballRadius + 0.02f;
+
+        if (hardOutOfBounds)
         {
-            int side = ball.position.z < 0 ? 0 : 1; // which court half it landed on
-            EndRally(losingTeamId: side);
-            return;
+            ResolveOutOfBounds(pos);
         }
-
-        // Soft bounds: if ball goes way out sides/back
-        if (Mathf.Abs(ball.position.x) > courtHalfWidth + 2f ||
-            Mathf.Abs(ball.position.z) > courtHalfLength + 2f ||
-            ball.position.y > 15f)
+        else if (pos.y <= groundContactThreshold && ballRb.velocity.y <= 0.1f && inPlayableCourt)
         {
-            // If lastTouch known, that team loses
-            int losing = lastTouchTeamId >= 0 ? lastTouchTeamId : 0;
-            EndRally(losingTeamId: losing);
+            ResolveInBoundsGroundHit(pos);
+        }
+        else if (pos.y <= groundContactThreshold && !inPlayableCourt)
+        {
+            ResolveOutOfBounds(pos);
         }
     }
 
-    void EndRally(int losingTeamId)
+    void ResolveInBoundsGroundHit(Vector3 pos)
+    {
+        int winningTeam = pos.x < 0f ? 1 : 0;
+        int losingTeam = winningTeam == 0 ? 1 : 0;
+        ResolveRally(winningTeam, losingTeam);
+    }
+
+    void ResolveOutOfBounds(Vector3 pos)
+    {
+        if (lastTouchTeamId >= 0)
+        {
+            int winningTeam = lastTouchTeamId == 0 ? 1 : 0;
+            ResolveRally(winningTeam, lastTouchTeamId);
+        }
+        else
+        {
+            ResolveRally(null, null);
+        }
+    }
+
+    void ResolveRally(int? winningTeamId, int? losingTeamId)
     {
         if (!_rallyLive) return;
+
         _rallyLive = false;
         _ralliesThisEpisode++;
 
-        int winningTeamId = losingTeamId == 0 ? 1 : 0;
-
-        float winReward = 0.3f;
-        float loseReward = -0.3f;
-
-        if (winningTeamId == 0)
+        if (winningTeamId.HasValue && losingTeamId.HasValue)
         {
-            _team0Group.AddGroupReward(winReward);
-            _team1Group.AddGroupReward(loseReward);
+            if (winningTeamId.Value == 0)
+            {
+                _team0Group.AddGroupReward(1f);
+                _team1Group.AddGroupReward(-1f);
+            }
+            else
+            {
+                _team1Group.AddGroupReward(1f);
+                _team0Group.AddGroupReward(-1f);
+            }
         }
         else
         {
-            _team1Group.AddGroupReward(winReward);
-            _team0Group.AddGroupReward(loseReward);
+            const float neutralPenalty = -0.1f;
+            _team0Group.AddGroupReward(neutralPenalty);
+            _team1Group.AddGroupReward(neutralPenalty);
         }
 
-        if (_ralliesThisEpisode >= maxRalliesPerEpisode)
+        if (ballRb)
         {
-            _team0Group.EndGroupEpisode();
-            _team1Group.EndGroupEpisode();
-            ResetEpisode();
+            ballRb.velocity = Vector3.zero;
+            ballRb.angularVelocity = Vector3.zero;
         }
-        else
-        {
-            // Endless style: reset just rally
-            Invoke(nameof(StartNextRally), rallyResetDelay);
-        }
-    }
 
-    void StartNextRally()
-    {
-        int serveTo = Random.value < 0.5f ? 0 : 1;
-        StartRally(serveTo);
+        _team0Group.EndGroupEpisode();
+        _team1Group.EndGroupEpisode();
+
+        ResetEpisode();
     }
 }
