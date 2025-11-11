@@ -43,6 +43,13 @@ namespace PassTrainer
         public Rigidbody BallRigidbody => ballRigidbody;
         public Transform Launcher => launcher;
         public Transform TargetZone => targetZone;
+        public Vector3 BallPosition => ballRigidbody != null ? ballRigidbody.position : Vector3.zero;
+        public float HitRadius => hitRadius;
+        public float HitMaxHeight => hitMaxHeight;
+
+        public Vector3 BallVelocity => ballRigidbody != null ? ballRigidbody.velocity : Vector3.zero;
+
+        public Vector3 TargetPosition => targetZone != null ? targetZone.position : Vector3.zero;
 
         private void Awake()
         {
@@ -53,7 +60,7 @@ namespace PassTrainer
         {
             if (passAgent != null && ballRigidbody != null && launcher != null && targetZone != null)
             {
-                passAgent.SetEnvironment(this);
+                //passAgent.SetEnvironment(this);
                 return;
             }
 
@@ -66,7 +73,7 @@ namespace PassTrainer
 
                 if (passAgent != null)
                 {
-                    passAgent.SetEnvironment(this);
+                    //passAgent.SetEnvironment(this);
                 }
 
                 return;
@@ -86,7 +93,7 @@ namespace PassTrainer
                 var agentRb = agentGo.GetComponent<Rigidbody>() ?? agentGo.AddComponent<Rigidbody>();
                 agentRb.constraints = RigidbodyConstraints.FreezeRotation;
                 passAgent = agentGo.AddComponent<PassAgent>();
-                passAgent.SetEnvironment(this);
+                //passAgent.SetEnvironment(this);
             }
 
             if (ballRigidbody == null)
@@ -147,15 +154,26 @@ namespace PassTrainer
                 return false;
             }
 
-            passAgent.SetEnvironment(this);
+            //passAgent.SetEnvironment(this);
             return true;
         }
 
         private void ResetAgent()
         {
+            if (passAgent == null)
+                return;
+
+            // Reset position & rotation
             passAgent.transform.position = agentSpawn;
             passAgent.transform.rotation = Quaternion.identity;
-            passAgent.ResetRigidbodyState();
+
+            // Reset physics
+            var rb = passAgent.GetComponent<Rigidbody>();
+            if (rb != null)
+            {
+                rb.velocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+            }
         }
 
         private void ResetBall()
