@@ -22,13 +22,11 @@ namespace PassTrainer
         [SerializeField] private LayerMask groundMask = ~0;
 
         private Rigidbody _rb;
-        private BehaviorParameters _behaviorParameters;
 
         protected override void Awake()
         {
             base.Awake();
             _rb = GetComponent<Rigidbody>();
-            _behaviorParameters = GetComponent<BehaviorParameters>();
         }
 
         public override void OnEpisodeBegin()
@@ -46,35 +44,60 @@ namespace PassTrainer
 
             Vector3 ballPos = env != null ? env.BallPosition : Vector3.zero;
             Vector3 ballVel = env != null ? env.BallVelocity : Vector3.zero;
-            Vector3 targetPos = env != null ? env.TargetPosition : Vector3.zero;
+            Vector3 targetPos = env != null ? env.PassTargetPosition : Vector3.zero;
+            Vector3 netPos = env != null ? env.NetPosition : Vector3.zero;
 
-            float normX = 8f;
-            float normZ = 4f;
+            float normX = Mathf.Max(env != null ? env.CourtHalfLength : 8f, 0.001f);
+            float normZ = Mathf.Max(env != null ? env.CourtHalfWidth : 4f, 0.001f);
             float normV = 10f;
 
-            // Agent pos (x,z)
+            // Agent pos (x,z) on court
             sensor.AddObservation(pos.x / normX);
             sensor.AddObservation(pos.z / normZ);
 
-            // Agent vel (x,z)
+            // Agent vel (x,z) normalized
             sensor.AddObservation(vel.x / normV);
             sensor.AddObservation(vel.z / normV);
 
-            // Ball relative to agent
+            // Ball relative position (x,y,z) in agent frame
             Vector3 ballRel = ballPos - pos;
             sensor.AddObservation(ballRel.x / normX);
             sensor.AddObservation(ballRel.y / normX);
             sensor.AddObservation(ballRel.z / normZ);
 
-            // Ball vel
+            // Ball velocity (x,y,z)
             sensor.AddObservation(ballVel.x / normV);
             sensor.AddObservation(ballVel.y / normV);
             sensor.AddObservation(ballVel.z / normV);
 
-            // Target relative to agent
+            // Pass target relative position (x,z)
             Vector3 targetRel = targetPos - pos;
             sensor.AddObservation(targetRel.x / normX);
             sensor.AddObservation(targetRel.z / normZ);
+
+            // Touch index (0,1,2) normalized
+            float touchFraction = env != null ? Mathf.Clamp01(env.TouchIndex / 2f) : 0f;
+            sensor.AddObservation(touchFraction);
+
+            // Signed distance to net along court length
+            float netDepth = env != null ? (pos.x - netPos.x) / normX : 0f;
+            sensor.AddObservation(Mathf.Clamp(netDepth, -1f, 1f));
+
+            // Teammate reserve occupancy (0 or 1)
+            bool inReserve = false;
+            if (env != null && env.HasTeammateReserve)
+            {
+                Vector3 reservePos = env.TeammateReservePosition;
+                Vector2 reserveSize = env.TeammateReserveExtents;
+                if (reserveSize.sqrMagnitude > 0f)
+                {
+                    float halfX = reserveSize.x * 0.5f;
+                    float halfZ = reserveSize.y * 0.5f;
+                    inReserve = Mathf.Abs(pos.x - reservePos.x) <= halfX &&
+                                Mathf.Abs(pos.z - reservePos.z) <= halfZ;
+                }
+            }
+            sensor.AddObservation(inReserve ? 1f : 0f);
         }
 
         public override void OnActionReceived(ActionBuffers actions)
@@ -116,6 +139,11 @@ namespace PassTrainer
             if (hit == 1 && env != null)
             {
                 env.TryHitBall(this);
+            }
+
+            if (env != null)
+            {
+                env.ApplyStepRewards(this);
             }
 
             AddReward(-0.001f);
@@ -168,5 +196,24 @@ namespace PassTrainer
                 groundCheckDistance + 0.1f,
                 groundMask, QueryTriggerInteraction.Ignore);
         }
+
+        // Observation order (CollectObservations):
+        // 1-2: Agent world position (x,z) normalised by court half-length/width
+        // 3-4: Agent velocity (x,z)
+        // 5-7: Ball relative position (x,y,z)
+        // 8-10: Ball velocity (x,y,z)
+        // 11-12: Pass target relative position (x,z)
+        // 13: Normalised touch index (0-1)
+        // 14: Signed distance to net ([-1,1])
+        // 15: Teammate reserve occupancy flag
+        //
+        // Reward hooks (see PassTrainerEnv):
+        //  - Step penalty (-0.001f) + alive reward + spacing penalty
+        //  - Contact bonus and pass quality bonuses/penalties
+        //  - Episode terminal rewards (ground hit, out-of-bounds, success)
+        //
+        // Inspector setup:
+        //  - Assign PassTrainerEnv reference
+        //  - Tweak moveSpeed/jumpForce plus ground check distance & mask as needed
     }
 }
